@@ -151,6 +151,16 @@
     [
         a lv2:InputPort , lv2:ControlPort ;
         lv2:index 10 ;
+        lv2:symbol "vel0_as_noteoff" ;
+        lv2:name "Vel-Zero Fix(NoteOn Vel0 as NoteOff 0=Off, 1=On)" ;
+        lv2:default 0 ;
+        lv2:minimum 0 ;
+        lv2:maximum 1 ;
+        lv2:portProperty lv2:toggled ;
+    ] ,
+    [
+        a lv2:InputPort , lv2:ControlPort ;
+        lv2:index 11 ;
         lv2:symbol "channel" ;
         lv2:name "Channel (0=Any, 1..16)" ;
         lv2:default 0 ;
@@ -161,7 +171,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 11 ;
+        lv2:index 12 ;
         lv2:symbol "out_capacity" ;
         lv2:name "Output Capacity" ;
         lv2:default 0 ;

@@ -16,18 +16,19 @@
 #define PLUGIN_URI "urn:bariyan:wsyn-midi-customizer"
 
 typedef enum {
-    PORT_MIDI_IN    = 0,
-    PORT_MIDI_OUT   = 1,
-    PORT_CENTERIN   = 2,
-    PORT_DEADZONE   = 3,
-    PORT_DIST_U     = 4,
-    PORT_DIST_L     = 5,
-    PORT_CURVE_U    = 6,
-    PORT_CURVE_L    = 7,
-    PORT_V_FLOOR    = 8,
-    PORT_TRANSPOSE  = 9,
-    PORT_CHANNEL    = 10,
-    PORT_OUTCAP     = 11
+    PORT_MIDI_IN         = 0,
+    PORT_MIDI_OUT        = 1,
+    PORT_CENTERIN        = 2,
+    PORT_DEADZONE        = 3,
+    PORT_DIST_U          = 4,
+    PORT_DIST_L          = 5,
+    PORT_CURVE_U         = 6,
+    PORT_CURVE_L         = 7,
+    PORT_V_FLOOR         = 8,
+    PORT_TRANSPOSE       = 9,
+    PORT_VEL0_AS_NOTEOFF = 10, 
+    PORT_CHANNEL         = 11,
+    PORT_OUTCAP          = 12
 } PortIndex;
 
 typedef enum { CURVE_LIN = 0, CURVE_EXP = 1, CURVE_LOG = 2 } CurveType;
@@ -47,6 +48,7 @@ typedef struct {
     const float* curve_l;
     const float* v_floor;
     const float* out_capacity;
+    const float* vel0_as_noteoff; 
 
     /* Internal state */
     uint8_t last_breath;
@@ -182,18 +184,19 @@ static LV2_Handle instantiate(const LV2_Descriptor* d, double r, const char* p, 
 static void connect_port(LV2_Handle instance, uint32_t port, void* data) {
     WSCustomizer* self = (WSCustomizer*)instance;
     switch ((PortIndex)port) {
-        case PORT_MIDI_IN:    self->in_seq       = (const LV2_Atom_Sequence*)data; break;
-        case PORT_MIDI_OUT:   self->out_seq      = (LV2_Atom_Sequence*)data; break;
-        case PORT_CENTERIN:   self->center_in    = (const float*)data; break;
-        case PORT_DEADZONE:   self->deadzone     = (const float*)data; break;
-        case PORT_DIST_U:     self->dist_u       = (const float*)data; break;
-        case PORT_DIST_L:     self->dist_l       = (const float*)data; break;
-        case PORT_CURVE_U:    self->curve_u      = (const float*)data; break;
-        case PORT_CURVE_L:    self->curve_l      = (const float*)data; break;
-        case PORT_V_FLOOR:    self->v_floor      = (const float*)data; break;
-        case PORT_TRANSPOSE:  self->transpose    = (const float*)data; break;
-        case PORT_CHANNEL:    self->channel      = (const float*)data; break;
-        case PORT_OUTCAP:     self->out_capacity = (const float*)data; break;
+        case PORT_MIDI_IN:          self->in_seq            = (const LV2_Atom_Sequence*)data; break;
+        case PORT_MIDI_OUT:         self->out_seq           = (LV2_Atom_Sequence*)data; break;
+        case PORT_CENTERIN:         self->center_in         = (const float*)data; break;
+        case PORT_DEADZONE:         self->deadzone          = (const float*)data; break;
+        case PORT_DIST_U:           self->dist_u            = (const float*)data; break;
+        case PORT_DIST_L:           self->dist_l            = (const float*)data; break;
+        case PORT_CURVE_U:          self->curve_u           = (const float*)data; break;
+        case PORT_CURVE_L:          self->curve_l           = (const float*)data; break;
+        case PORT_V_FLOOR:          self->v_floor           = (const float*)data; break;
+        case PORT_VEL0_AS_NOTEOFF:  self->vel0_as_noteoff   = (const float*)data; break;
+        case PORT_TRANSPOSE:        self->transpose         = (const float*)data; break;
+        case PORT_CHANNEL:          self->channel           = (const float*)data; break;
+        case PORT_OUTCAP:           self->out_capacity      = (const float*)data; break;
     }
 }
 
@@ -250,12 +253,34 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             const int vout = map_pitchbend(vin, cin, dz, du, dl, cu, cl);
             uint8_t out[3] = { msg[0], (uint8_t)(vout & 0x7F), (uint8_t)((vout >> 7) & 0x7F) };
             if (!forge_write_atom_body(&self->forge, self->urid_midi_event, out, 3)) break;
-        } else if (status == 0x90 && msz >= 3) { // Note On
+        //} else if (status == 0x90 && msz >= 3) { // Note On
+        //    int note = clamp_int((int)msg[1] + semi, 0, 127);
+        //    int velo = (vf > 0) ? (int)self->last_breath : (int)msg[2];
+        //    if (vf > 0 && velo < vf) velo = vf;
+        //    uint8_t out[3] = { msg[0], (uint8_t)note, (uint8_t)velo };
+        //    if (!forge_write_atom_body(&self->forge, self->urid_midi_event, out, 3)) break;
+        } else if ((status & 0xF0) == 0x90 && msz >= 3) { // Note On (any channel)
+            const bool vel0_fix = (self->vel0_as_noteoff && *self->vel0_as_noteoff >= 0.5f);
+            const uint8_t channel = status & 0x0F;
+            const uint8_t velocity = msg[2];
             int note = clamp_int((int)msg[1] + semi, 0, 127);
-            int velo = (vf > 0) ? (int)self->last_breath : (int)msg[2];
-            if (vf > 0 && velo < vf) velo = vf;
-            uint8_t out[3] = { msg[0], (uint8_t)note, (uint8_t)velo };
-            if (!forge_write_atom_body(&self->forge, self->urid_midi_event, out, 3)) break;
+
+            // If enabled and incoming Note On velocity is zero, rewrite as Note Off.
+            if (vel0_fix && velocity == 0) {
+                uint8_t out[3] = {
+                    (uint8_t)(0x80 | channel), // Note Off status
+                    (uint8_t)note,
+                    0
+                };
+                if (!forge_write_atom_body(&self->forge, self->urid_midi_event, out, 3)) break;
+            } else {
+                // Normal Note On processing
+                int velo = (vf > 0) ? (int)self->last_breath : (int)velocity;
+                if (vf > 0 && velo < vf) velo = vf;
+                
+                uint8_t out[3] = { (uint8_t)(0x90 | channel), (uint8_t)note, (uint8_t)velo };
+                if (!forge_write_atom_body(&self->forge, self->urid_midi_event, out, 3)) break;
+            }
         } else if (status == 0x80 && msz >= 3) { // Note Off
             int note = clamp_int((int)msg[1] + semi, 0, 127);
             uint8_t out[3] = { msg[0], (uint8_t)note, msg[2] };
