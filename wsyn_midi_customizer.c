@@ -28,7 +28,9 @@ typedef enum {
     PORT_TRANSPOSE       = 9,
     PORT_VEL0_AS_NOTEOFF = 10, 
     PORT_CHANNEL         = 11,
-    PORT_OUTCAP          = 12
+    PORT_OUTCAP          = 12,
+    PORT_PB_METER        = 13,
+    PORT_BREATH_METER    = 14
 } PortIndex;
 
 typedef enum { CURVE_LIN = 0, CURVE_EXP = 1, CURVE_LOG = 2 } CurveType;
@@ -49,6 +51,9 @@ typedef struct {
     const float* v_floor;
     const float* out_capacity;
     const float* vel0_as_noteoff; 
+
+    float* pitch_bend_meter; // Pointer for Pitch Bend meter
+    float* breath_meter;     // Pointer for Breath meter
 
     /* Internal state */
     uint8_t last_breath;
@@ -76,7 +81,6 @@ static uint32_t clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
     return (v < lo) ? lo : (v > hi) ? hi : v;
 }
 
-
 // Write an Atom (header + body) into the current forge output.
 // Returns 1 on success, 0 on failure (e.g. buffer full).
 static int forge_write_atom_body(LV2_Atom_Forge* forge,
@@ -96,6 +100,7 @@ static int forge_write_atom_body(LV2_Atom_Forge* forge,
     }
     return 1;
 }
+
 static CurveParams decode_curve_params(int v) {
     CurveParams p;
     v = clamp_int(v, 0, 10);
@@ -197,6 +202,8 @@ static void connect_port(LV2_Handle instance, uint32_t port, void* data) {
         case PORT_TRANSPOSE:        self->transpose         = (const float*)data; break;
         case PORT_CHANNEL:          self->channel           = (const float*)data; break;
         case PORT_OUTCAP:           self->out_capacity      = (const float*)data; break;
+        case PORT_PB_METER:         self->pitch_bend_meter  = (float*)data;       break;
+        case PORT_BREATH_METER:     self->breath_meter      = (float*)data;       break;
     }
 }
 
@@ -248,17 +255,14 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
         if (status == 0xB0 && msz >= 3) { // CC
             if (msg[1] == 2) self->last_breath = msg[2]; // Monitor Breath Control
             if (!forge_write_atom_body(&self->forge, self->urid_midi_event, msg, msz)) break;
+            if (self->breath_meter) *(self->breath_meter) = (float)msg[2];
         } else if (status == 0xE0 && msz >= 3) { // Pitch Bend
             const int vin  = (int)msg[1] | ((int)msg[2] << 7);
             const int vout = map_pitchbend(vin, cin, dz, du, dl, cu, cl);
             uint8_t out[3] = { msg[0], (uint8_t)(vout & 0x7F), (uint8_t)((vout >> 7) & 0x7F) };
             if (!forge_write_atom_body(&self->forge, self->urid_midi_event, out, 3)) break;
-        //} else if (status == 0x90 && msz >= 3) { // Note On
-        //    int note = clamp_int((int)msg[1] + semi, 0, 127);
-        //    int velo = (vf > 0) ? (int)self->last_breath : (int)msg[2];
-        //    if (vf > 0 && velo < vf) velo = vf;
-        //    uint8_t out[3] = { msg[0], (uint8_t)note, (uint8_t)velo };
-        //    if (!forge_write_atom_body(&self->forge, self->urid_midi_event, out, 3)) break;
+            int vmeter = vout - 8192;
+            if (self->pitch_bend_meter) *(self->pitch_bend_meter) = (float)vmeter;
         } else if ((status & 0xF0) == 0x90 && msz >= 3) { // Note On (any channel)
             const bool vel0_fix = (self->vel0_as_noteoff && *self->vel0_as_noteoff >= 0.5f);
             const uint8_t channel = status & 0x0F;
