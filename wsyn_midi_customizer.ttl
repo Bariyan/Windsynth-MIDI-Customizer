@@ -52,9 +52,9 @@
     [
         a lv2:InputPort , lv2:ControlPort ;
         lv2:index 3 ;
-        lv2:symbol "deadzone" ;
-        lv2:name "DeadZone (±)" ;
-        lv2:default 700 ;
+        lv2:symbol "deadzone_u" ;
+        lv2:name "DeadZone Upper" ;
+        lv2:default 350 ;
         lv2:minimum 0 ;
         lv2:maximum 4000 ;
         lv2:portProperty lv2:integer ;
@@ -63,6 +63,17 @@
     [
         a lv2:InputPort , lv2:ControlPort ;
         lv2:index 4 ;
+        lv2:symbol "deadzone_l" ;
+        lv2:name "DeadZone Lower" ;
+        lv2:default 350 ;
+        lv2:minimum 0 ;
+        lv2:maximum 4000 ;
+        lv2:portProperty lv2:integer ;
+        pprop:rangeSteps 4000 ;
+    ] ,
+    [
+        a lv2:InputPort , lv2:ControlPort ;
+        lv2:index 5 ;
         lv2:symbol "dist_u" ;
         lv2:name "Upper Reach Distance" ;
         lv2:default 4000 ;
@@ -73,7 +84,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 5 ;
+        lv2:index 6 ;
         lv2:symbol "dist_l" ;
         lv2:name "Lower Reach Distance" ;
         lv2:default 4000 ;
@@ -84,7 +95,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 6 ;
+        lv2:index 7 ;
         lv2:symbol "curve_u" ;
         lv2:name "Upper Curve/Depth" ;
         lv2:default 0 ;
@@ -106,7 +117,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 7 ;
+        lv2:index 8 ;
         lv2:symbol "curve_l" ;
         lv2:name "Lower Curve/Depth" ;
         lv2:default 0 ;
@@ -128,7 +139,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 8 ;
+        lv2:index 9 ;
         lv2:symbol "v_floor" ;
         lv2:name "Pseudo Dynamic Velocity (0=Off, 1~= Floor)" ;
         lv2:default 0 ;
@@ -139,7 +150,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 9 ;
+        lv2:index 10 ;
         lv2:symbol "transpose" ;
         lv2:name "Transpose (Semitones)" ;
         lv2:default 0 ;
@@ -150,7 +161,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 10 ;
+        lv2:index 11 ;
         lv2:symbol "vel0_as_noteoff" ;
         lv2:name "Vel-Zero Fix(NoteOn Vel0 as NoteOff 0=Off, 1=On)" ;
         lv2:default 0 ;
@@ -160,7 +171,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 11 ;
+        lv2:index 12 ;
         lv2:symbol "channel" ;
         lv2:name "Channel (0=Any, 1..16)" ;
         lv2:default 0 ;
@@ -171,7 +182,7 @@
     ] ,
     [
         a lv2:InputPort , lv2:ControlPort ;
-        lv2:index 12 ;
+        lv2:index 13 ;
         lv2:symbol "out_capacity" ;
         lv2:name "Output Capacity" ;
         lv2:default 0 ;
@@ -186,7 +197,7 @@
     ] ,
     [
         a lv2:ControlPort , lv2:OutputPort ;
-        lv2:index 13 ;
+        lv2:index 14 ;
         lv2:symbol "pitch_bend_meter" ;
         lv2:name "Pitch Bend" ;
         lv2:minimum -8192.0 ;
@@ -195,7 +206,7 @@
     ] , 
     [
         a lv2:ControlPort , lv2:OutputPort ;
-        lv2:index 14 ;
+        lv2:index 15 ;
         lv2:symbol "breath_meter" ;
         lv2:name "Breath" ;
         lv2:minimum 0.0 ;

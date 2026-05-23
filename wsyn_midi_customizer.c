@@ -19,18 +19,19 @@ typedef enum {
     PORT_MIDI_IN         = 0,
     PORT_MIDI_OUT        = 1,
     PORT_CENTERIN        = 2,
-    PORT_DEADZONE        = 3,
-    PORT_DIST_U          = 4,
-    PORT_DIST_L          = 5,
-    PORT_CURVE_U         = 6,
-    PORT_CURVE_L         = 7,
-    PORT_V_FLOOR         = 8,
-    PORT_TRANSPOSE       = 9,
-    PORT_VEL0_AS_NOTEOFF = 10, 
-    PORT_CHANNEL         = 11,
-    PORT_OUTCAP          = 12,
-    PORT_PB_METER        = 13,
-    PORT_BREATH_METER    = 14
+    PORT_DEADZONE_U      = 3,
+    PORT_DEADZONE_L      = 4,
+    PORT_DIST_U          = 5,
+    PORT_DIST_L          = 6,
+    PORT_CURVE_U         = 7,
+    PORT_CURVE_L         = 8,
+    PORT_V_FLOOR         = 9,
+    PORT_TRANSPOSE       = 10,
+    PORT_VEL0_AS_NOTEOFF = 11, 
+    PORT_CHANNEL         = 12,
+    PORT_OUTCAP          = 13,
+    PORT_PB_METER        = 14,
+    PORT_BREATH_METER    = 15
 } PortIndex;
 
 typedef enum { CURVE_LIN = 0, CURVE_EXP = 1, CURVE_LOG = 2 } CurveType;
@@ -43,7 +44,8 @@ typedef struct {
     const float* channel;
     const float* transpose;
     const float* center_in;
-    const float* deadzone;
+    const float* deadzone_u;
+    const float* deadzone_l;
     const float* dist_u;
     const float* dist_l;
     const float* curve_u;
@@ -120,28 +122,26 @@ static double apply_curve(double x, CurveType type, double k) {
     }
 }
 
-static int map_pitchbend(int vin, int cin, int dz, int du, int dl, CurveParams cu, CurveParams cl) {
+static int map_pitchbend(int vin, int cin, int duz, int dlz, int du, int dl, CurveParams cu, CurveParams cl) {
     const int c0 = 8192;
     vin = clamp_int(vin, 0, 16383);
     const int diff = vin - cin;
-    const int abs_diff = (diff < 0) ? -diff : diff;
-    if (abs_diff <= dz) return c0;
 
-    int vout;
-    if (diff > dz) {
-        if (du <= 0) vout = 16383;
-        else {
-            double x = (double)(diff - dz) / (double)du;
-            vout = c0 + (int)(apply_curve(x, cu.type, cu.k) * 8191.0 + 0.5);
-        }
-    } else {
-        if (dl <= 0) vout = 0;
-        else {
-            double x = (double)(cin - dz - vin) / (double)dl;
-            vout = c0 - (int)(apply_curve(x, cl.type, cl.k) * 8192.0 + 0.5);
-        }
+    if (diff > 0) {
+        if (diff <= duz) return c0;
+        if (du <= 0) return 16383;
+        double x = (double)(diff - duz) / (double)du;
+        int vout = c0 + (int)(apply_curve(x, cu.type, cu.k) * 8191.0 + 0.5);
+        return clamp_int(vout, 0, 16383);
+    } else if (diff < 0) {
+        const int abs_diff = -diff;
+        if (abs_diff <= dlz) return c0;
+        if (dl <= 0) return 0;
+        double x = (double)(abs_diff - dlz) / (double)dl;
+        int vout = c0 - (int)(apply_curve(x, cl.type, cl.k) * 8192.0 + 0.5);
+        return clamp_int(vout, 0, 16383);
     }
-    return clamp_int(vout, 0, 16383);
+    return c0;
 }
 
 static const LV2_Feature* find_feature(const LV2_Feature* const* f, const char* uri) {
@@ -192,7 +192,8 @@ static void connect_port(LV2_Handle instance, uint32_t port, void* data) {
         case PORT_MIDI_IN:          self->in_seq            = (const LV2_Atom_Sequence*)data; break;
         case PORT_MIDI_OUT:         self->out_seq           = (LV2_Atom_Sequence*)data; break;
         case PORT_CENTERIN:         self->center_in         = (const float*)data; break;
-        case PORT_DEADZONE:         self->deadzone          = (const float*)data; break;
+        case PORT_DEADZONE_U:        self->deadzone_u        = (const float*)data; break;
+        case PORT_DEADZONE_L:        self->deadzone_l        = (const float*)data; break;
         case PORT_DIST_U:           self->dist_u            = (const float*)data; break;
         case PORT_DIST_L:           self->dist_l            = (const float*)data; break;
         case PORT_CURVE_U:          self->curve_u           = (const float*)data; break;
@@ -228,7 +229,8 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
     if (!lv2_atom_forge_sequence_head(&self->forge, &self->seq_frame, 0)) return;
 
     int cin = self->center_in ? (int)lround(*self->center_in) : 8192;
-    int dz  = self->deadzone ? (int)lround(*self->deadzone) : 700;
+    int duz = self->deadzone_u ? (int)lround(*self->deadzone_u) : 350;
+    int dlz = self->deadzone_l ? (int)lround(*self->deadzone_l) : 350;
     int du  = self->dist_u ? (int)lround(*self->dist_u) : 4000;
     int dl  = self->dist_l ? (int)lround(*self->dist_l) : 4000;
     CurveParams cu = decode_curve_params(self->curve_u ? (int)lround(*self->curve_u) : 0);
@@ -258,7 +260,7 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
             if (self->breath_meter) *(self->breath_meter) = (float)msg[2];
         } else if (status == 0xE0 && msz >= 3) { // Pitch Bend
             const int vin  = (int)msg[1] | ((int)msg[2] << 7);
-            const int vout = map_pitchbend(vin, cin, dz, du, dl, cu, cl);
+            const int vout = map_pitchbend(vin, cin, duz, dlz, du, dl, cu, cl);
             uint8_t out[3] = { msg[0], (uint8_t)(vout & 0x7F), (uint8_t)((vout >> 7) & 0x7F) };
             if (!forge_write_atom_body(&self->forge, self->urid_midi_event, out, 3)) break;
             int vmeter = vout - 8192;
